@@ -24,7 +24,10 @@ Text: """${text}"""
   } catch (err) {
     console.error("Translate API Error:", err);
     return NextResponse.json(
-      { translated: text },
+      {
+        translated: null,
+        error: "Translation failed",
+      },
       { status: 500 }
     );
   }
