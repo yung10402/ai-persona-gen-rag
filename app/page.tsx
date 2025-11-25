@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation"; // ← 추가
+import { sendLog } from "@/lib/log"; // ← 추가
 
 export default function HomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // UT 링크에서 ?pid=U01 이런 식으로 들어오는 참가자 ID
+  const pid = searchParams.get("pid") ?? "";
 
   // 상태들
   const [serviceType, setServiceType] = useState<"appweb" | "product" | null>(
@@ -28,8 +33,27 @@ export default function HomePage() {
       gender: gender ?? "",
       occupation,
       userGoal,
+      // 필요하면 pid도 같이 넘길 수 있음 (일단 주석)
+      // pid: pid ?? "",
     });
 
+    // 1) 홈 제출 시점 로그 한 줄 쏘기
+    sendLog({
+      pid: pid || undefined, // 없으면 undefined
+      page: "home",
+      event: "home_submit",
+      payload: {
+        serviceType: serviceType ?? "",
+        serviceCategory,
+        serviceSummary,
+        ageRange: ageRange ?? "",
+        gender: gender ?? "",
+        occupation,
+        userGoal,
+      },
+    });
+
+    // 2) 원래 하던 대로 output 페이지로 이동
     router.push(`/output?${params.toString()}`);
   };
 

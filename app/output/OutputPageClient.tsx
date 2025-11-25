@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { sendLog } from "@/lib/log"; // 로그 유틸
 
 type SectionKey = "persona" | "behavior" | "needs" | "pain" | "scenario";
 
@@ -73,6 +74,9 @@ type PersonaResult = {
 export default function OutputPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // 참가자 ID (홈에서 ?pid=U01 이런 식으로 들어온다고 가정)
+  const pid = searchParams.get("pid") ?? "";
 
   // 홈에서 온 값
   const ageRange = searchParams.get("ageRange") ?? "";
@@ -304,6 +308,25 @@ export default function OutputPageClient() {
         };
 
         setPersonaData(result);
+
+        // ★ 로그: AI 페르소나 생성/번역 완료
+        void sendLog({
+          pid,
+          page: "output",
+          event: "persona_generated",
+          payload: {
+            userInput: {
+              serviceType,
+              serviceCategory,
+              serviceSummary,
+              ageRange,
+              gender,
+              occupation,
+              userGoal,
+            },
+            aiPersona: result,
+          },
+        });
       } catch (e) {
         console.error(e);
         setError("AI 페르소나 생성 중 오류가 발생했습니다.");
@@ -313,63 +336,72 @@ export default function OutputPageClient() {
     };
 
     fetchPersona();
-  }, [ageRange, gender, occupation, serviceSummary, userGoal]);
+  }, [
+    ageRange,
+    gender,
+    occupation,
+    serviceSummary,
+    userGoal,
+    pid,
+    serviceType,
+    serviceCategory,
+  ]);
 
   // ---------- 인터랙션 핸들러 ----------
 
   const handleAdopt = (key: SectionKey) => {
-    setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+    const next = !selected[key];
+
+    setSelected((prev) => ({ ...prev, [key]: next }));
     setRejected((prev) => ({ ...prev, [key]: false }));
     setFeedback((prev) => ({ ...prev, [key]: "" }));
+
+    void sendLog({
+      pid,
+      page: "output",
+      event: "section_adopt_toggle",
+      payload: {
+        section: key,
+        adopted: next,
+      },
+    });
   };
 
   const handleReject = (key: SectionKey) => {
-    setRejected((prev) => ({ ...prev, [key]: !prev[key] }));
+    const next = !rejected[key];
+
+    setRejected((prev) => ({ ...prev, [key]: next }));
     setSelected((prev) => ({ ...prev, [key]: false }));
     setFeedback((prev) => ({ ...prev, [key]: "" }));
+
+    void sendLog({
+      pid,
+      page: "output",
+      event: "section_reject_toggle",
+      payload: {
+        section: key,
+        rejected: next,
+      },
+    });
   };
 
   const handleFeedbackChange = (key: SectionKey, value: string) => {
+    // 여기서는 상태만 업데이트하고,
+    // 실제로는 "인터뷰 하기" 버튼 눌렀을 때 한 번에 로그 보냄.
     setFeedback((prev) => ({ ...prev, [key]: value }));
   };
 
-  // ---------- 대시보드 저장 ----------
+  // ---------- 세션 로그 공통 빌더 ----------
 
-  const saveToDashboard = () => {
-    if (typeof window === "undefined") return;
-    if (!personaData) return;
+  const buildSessionLog = (): PersonaSessionLog | null => {
+    if (!personaData) return null;
 
-    const id = Date.now().toString();
-
-    const newItem = {
-      id,
-      createdAt: new Date().toISOString(),
-      name: personaData.persona.name,
-      ageRange: personaData.meta.ageRange,
-      gender: personaData.meta.gender,
-      occupation: personaData.meta.occupation,
-      summary: personaData.persona.summary,
-      full: personaData, // 전체 결과 저장
-    };
-
-    const raw = window.localStorage.getItem("personaDashboardItems");
-    const list = raw ? JSON.parse(raw) : [];
-
-    list.push(newItem);
-    window.localStorage.setItem("personaDashboardItems", JSON.stringify(list));
-  };
-
-  // ---------- CSV용 세션 로그 저장 ----------
-
-  const saveCurrentSessionForExport = () => {
-    if (typeof window === "undefined") return;
-    if (!personaData) return;
-
-    const log: PersonaSessionLog = {
+    return {
       userInput: {
         serviceType,
         serviceCategory,
-        serviceSummary: personaData.meta.serviceSummary || serviceSummary || "",
+        serviceSummary:
+          personaData.meta.serviceSummary || serviceSummary || "",
         ageRange: personaData.meta.ageRange || ageRange || "",
         gender: personaData.meta.gender || gender || "",
         occupation: personaData.meta.occupation || occupation || "",
@@ -409,6 +441,41 @@ export default function OutputPageClient() {
         },
       },
     };
+  };
+
+  // ---------- 대시보드 저장 ----------
+
+  const saveToDashboard = () => {
+    if (typeof window === "undefined") return;
+    if (!personaData) return;
+
+    const id = Date.now().toString();
+
+    const newItem = {
+      id,
+      createdAt: new Date().toISOString(),
+      name: personaData.persona.name,
+      ageRange: personaData.meta.ageRange,
+      gender: personaData.meta.gender,
+      occupation: personaData.meta.occupation,
+      summary: personaData.persona.summary,
+      full: personaData, // 전체 결과 저장
+    };
+
+    const raw = window.localStorage.getItem("personaDashboardItems");
+    const list = raw ? JSON.parse(raw) : [];
+
+    list.push(newItem);
+    window.localStorage.setItem("personaDashboardItems", JSON.stringify(list));
+  };
+
+  // ---------- CSV용 세션 로그 저장 ----------
+
+  const saveCurrentSessionForExport = () => {
+    if (typeof window === "undefined") return;
+
+    const log = buildSessionLog();
+    if (!log) return;
 
     try {
       window.localStorage.setItem(
@@ -424,6 +491,18 @@ export default function OutputPageClient() {
 
   const handleOpenSource = async (key: SectionKey) => {
     if (!personaData) return;
+
+    const currentCount = sourceClickCount[key] ?? 0;
+
+    void sendLog({
+      pid,
+      page: "output",
+      event: "section_source_open",
+      payload: {
+        section: key,
+        clickIndex: currentCount + 1,
+      },
+    });
 
     // 클릭 횟수 카운트
     setSourceClickCount((prev) => ({
@@ -504,10 +583,32 @@ export default function OutputPageClient() {
     chatParams.set("needs", JSON.stringify(personaData.needs));
     chatParams.set("pain", JSON.stringify(personaData.pain));
     chatParams.set("scenario", personaData.scenario);
+    if (pid) chatParams.set("pid", pid);
   }
 
   const displayGender =
     personaData?.meta.gender || displayGenderRaw || "성별 미입력";
+
+  // ---------- 인터뷰 시작 핸들러 (여기서 한 번만 텍스트 포함 전체 로그 전송) ----------
+
+  const handleStartInterview = () => {
+    if (!personaData) return;
+
+    const sessionLog = buildSessionLog();
+    if (sessionLog) {
+      // ★ 여기서 한 번만, 사용자가 입력한 텍스트 포함 전체 상태를 깔끔하게 전송
+      void sendLog({
+        pid,
+        page: "output",
+        event: "output_submit",
+        payload: sessionLog,
+      });
+    }
+
+    saveToDashboard();
+    saveCurrentSessionForExport();
+    router.push(`/chat?${chatParams.toString()}`);
+  };
 
   // ---------- JSX ----------
 
@@ -525,7 +626,7 @@ export default function OutputPageClient() {
           <nav
             className="home"
             aria-label="홈으로 이동"
-            onClick={() => router.push("/")}
+            onClick={() => router.push(pid ? `/?pid=${pid}` : "/")}
           >
             <div className="material-symbols">
               <img className="vector" src="/img/Home.svg" alt="홈 아이콘" />
@@ -866,11 +967,7 @@ export default function OutputPageClient() {
             <button
               className="output-cta"
               type="button"
-              onClick={() => {
-                saveToDashboard();
-                saveCurrentSessionForExport(); // CSV용 세션 로그 저장
-                router.push(`/chat?${chatParams.toString()}`);
-              }}
+              onClick={handleStartInterview}
             >
               AI 페르소나와 인터뷰 하기
             </button>

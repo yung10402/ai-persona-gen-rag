@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { sendLog } from "@/lib/log"; // ★ 로그 유틸 추가
 
 type Message = {
   id: number;
@@ -66,6 +67,9 @@ function downloadCsv(filename: string, rows: string[][]) {
 function ChatPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // ★ pid도 같이 가져오기 (output에서 넘겨줌)
+  const pid = searchParams.get("pid") ?? "";
 
   // output → chat 에서 넘어오는 값들
   const name = searchParams.get("name") ?? "사용자";
@@ -145,6 +149,9 @@ function ChatPageInner() {
       hour12: true,
     });
 
+    // 현재까지 메시지 개수 기준으로 index 계산
+    const baseIndex = messages.length;
+
     const userMsg: Message = {
       id: Date.now(),
       role: "user",
@@ -153,6 +160,18 @@ function ChatPageInner() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+
+    // ★ 로그: 유저 메세지
+    void sendLog({
+      pid,
+      page: "chat",
+      event: "chat_user_message",
+      payload: {
+        index: baseIndex, // 대화 순서
+        text: trimmed,
+        time,
+      },
+    });
 
     try {
       const apiMessages = [
@@ -234,15 +253,18 @@ ${scenario ? scenario.slice(0, 600) : "(시나리오 없음)"}
           time,
         };
         setMessages((prev) => [...prev, errMsg]);
+
+        // ★ 에러도 로그로 남겨두고 싶으면 여기에 sendLog 추가 가능
         return;
       }
 
       const data = await res.json();
+      const aiText = data.reply ?? "(응답 없음)";
 
       const aiMsg: Message = {
         id: Date.now() + 1,
         role: "ai",
-        text: data.reply ?? "(응답 없음)",
+        text: aiText,
         time: new Date().toLocaleTimeString("ko-KR", {
           hour: "numeric",
           minute: "2-digit",
@@ -251,6 +273,17 @@ ${scenario ? scenario.slice(0, 600) : "(시나리오 없음)"}
       };
 
       setMessages((prev) => [...prev, aiMsg]);
+
+      // ★ 로그: AI 메세지
+      void sendLog({
+        pid,
+        page: "chat",
+        event: "chat_ai_message",
+        payload: {
+          index: baseIndex + 1, // 유저 바로 다음
+          text: aiText,
+        },
+      });
     } catch (error) {
       console.error("채팅 API 호출 실패:", error);
       const errMsg: Message = {
@@ -268,24 +301,96 @@ ${scenario ? scenario.slice(0, 600) : "(시나리오 없음)"}
       const current = prev[id];
       const nextRejected = !(current?.rejected ?? false);
 
-      return {
+      const next = {
         ...prev,
         [id]: {
           rejected: nextRejected,
           feedback: nextRejected ? current?.feedback ?? "" : "",
         },
       };
+
+      // ★ 토글할 때도 간단히 로그 남겨두기
+      void sendLog({
+        pid,
+        page: "chat",
+        event: "chat_feedback_toggle",
+        payload: {
+          messageId: id,
+          rejected: nextRejected,
+        },
+      });
+
+      return next;
     });
   };
 
   const handleFeedbackChange = (id: number, value: string) => {
-    setFeedbackByMsg((prev) => ({
-      ...prev,
-      [id]: {
-        rejected: true,
-        feedback: value,
+    setFeedbackByMsg((prev) => {
+      const next = {
+        ...prev,
+        [id]: {
+          rejected: true,
+          feedback: value,
+        },
+      };
+
+      return next;
+    });
+    // 실제 텍스트는 아래 “로그 보내기” 버튼 눌렀을 때 한 번에 서버로 전송
+  };
+
+  // 현재 채팅 + 피드백 구조화
+  const buildChatPayload = () => {
+    return {
+      messages: messages.map((m, idx) => {
+        const fb = feedbackByMsg[m.id];
+        return {
+          index: idx,
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          time: m.time,
+          aiRejected: m.role === "ai" ? !!fb?.rejected : undefined,
+          userFeedback: m.role === "ai" ? fb?.feedback ?? "" : undefined,
+        };
+      }),
+    };
+  };
+
+  // ★ 버튼 눌렀을 때: 세션 + 채팅 + 피드백 한 번에 서버로 로그 전송
+  const handleSendChatLog = () => {
+    if (typeof window === "undefined") return;
+
+    let session: PersonaSessionLog | null = null;
+    try {
+      const raw = window.localStorage.getItem("currentPersonaSession");
+      if (raw) {
+        session = JSON.parse(raw) as PersonaSessionLog;
+      }
+    } catch (e) {
+      console.error("세션 로그 읽기 실패:", e);
+    }
+
+    if (!session) {
+      alert(
+        "세션 로그를 찾을 수 없습니다. Output 화면에서 다시 인터뷰를 시작해 주세요."
+      );
+      return;
+    }
+
+    const chatPayload = buildChatPayload();
+
+    void sendLog({
+      pid,
+      page: "chat",
+      event: "chat_session_log",
+      payload: {
+        session,
+        chat: chatPayload,
       },
-    }));
+    });
+
+    alert("이번 인터뷰 로그를 서버에 저장했습니다.");
   };
 
   // CSV 내보내기 (+ 전체 로그 localStorage 누적)
@@ -401,7 +506,7 @@ ${scenario ? scenario.slice(0, 600) : "(시나리오 없음)"}
           <nav
             className="home"
             aria-label="홈으로 이동"
-            onClick={() => router.push("/")}
+            onClick={() => router.push(pid ? `/?pid=${pid}` : "/")}
           >
             <div className="material-symbols">
               <img className="vector" src="/img/Home.svg" alt="홈 아이콘" />
@@ -445,11 +550,18 @@ ${scenario ? scenario.slice(0, 600) : "(시나리오 없음)"}
             </div>
           </section>
 
-          {/* CSV 버튼 */}
+          {/* 버튼들 */}
           <section
             className="chat-messages-header"
-            aria-label="인터뷰 로그 내보내기"
+            aria-label="인터뷰 로그 저장/내보내기"
           >
+            <button
+              type="button"
+              className="chat-export-btn"
+              onClick={handleSendChatLog}
+            >
+              이번 인터뷰 로그 서버로 보내기
+            </button>
             <button
               type="button"
               className="chat-export-btn"
