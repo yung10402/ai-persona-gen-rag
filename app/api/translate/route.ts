@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { translated: null, error: "Missing OPENAI_API_KEY" },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({ apiKey });
+
     const { text } = await req.json();
 
     const prompt = `
-Translate the following text to Korean. Keep the style natural and professional. 
+Translate the following text to Korean. Keep the style natural and professional.
 Text: """${text}"""
 `;
 

@@ -2,8 +2,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 type SectionKey = "persona" | "behavior" | "needs" | "pain" | "scenario";
 
 type SectionReferencesBody = {
@@ -20,6 +18,15 @@ type SectionReferencesBody = {
 
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Missing OPENAI_API_KEY" },
+        { status: 500 }
+      );
+    }
+    const openai = new OpenAI({ apiKey });
+
     const { sectionKey, sectionText, meta } =
       (await req.json()) as SectionReferencesBody;
 
@@ -65,11 +72,10 @@ Return ONLY JSON with this exact shape:
       "type": "string (e.g., blog post, stat, industry_report, behavioral data, survey, etc.)",
       "detail": "1–2 sentence explanation of how this reference supports or motivates the section content",
       "source": "string (organization / journal / conference / author)",
-      "url": "string (URL, or \"\" if unknown)"
+      "url": "string (URL, or \\"\\" if unknown)"
     }
   ]
 }
-
 
 - If you are not sure about the exact URL, use a generic but plausible homepage
   (e.g., "https://nngroup.com") instead of inventing a deep link.
