@@ -1,10 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-
-
 type GeneratePersonaBody = {
   ageRange?: string;
   gender?: string;
@@ -13,13 +9,19 @@ type GeneratePersonaBody = {
   userGoal?: string;
 };
 
-type ItemWithSource = {
-  text: string;
-  source: string;
-};
-
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Missing OPENAI_API_KEY" },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({ apiKey });
+
     const {
       ageRange = "",
       gender = "",
@@ -39,33 +41,16 @@ Using the following inputs, create ONE realistic product user persona.
 - User Character: ${userGoal || "unknown"}
 
 Return ONLY a valid JSON object with EXACTLY this shape (no explanation, no markdown):
-
 {
   "persona": {
     "name": "a realistic Korean full name written in Hangul (e.g., \\"김민준\\")",
     "summary": "A 4-5 sentence synthesis capturing this persona’s motivations, context, digital literacy level, and product-relevant behaviors."
   },
-  "behavior": [
-    "Write exactly 7 behavior statements that describe observable, product-relevant behavioral patterns.",
-    "Focus on task flows, decision criteria, daily routines, technology habits, information-seeking patterns, collaboration habits, and constraints.",
-    "Avoid generic personality traits.",
-    "Each item must be 1 sentence."
-  ],
-  "needs": [
-    "Write exactly 7 needs or goals grounded in motivations, context of use, workflow problems, expectations, mental models, and desired outcomes.",
-    "Ensure each need reflects actionable UX insights (not generic wishes).",
-    "Each item must be 1 sentence."
-  ],
-  "pain": [
-    "Write exactly 7 pain points reflecting friction, inefficiencies, emotional frustrations, cognitive load, unmet needs, breakdown points, and environmental constraints.",
-    "Avoid vague statements. Focus on specific breakdowns within the product/service workflow.",
-    "Each item must be 1 sentence."
-  ],
-  "scenario":  "A detailed, realistic 15 sentence narrative describing how this persona would engage with the product/service in a specific context, including motivation, trigger, behavior flow, decision points, and an outcome."
+  "behavior": [],
+  "needs": [],
+  "pain": [],
+  "scenario": ""
 }
-
-All field values MUST be written in natural English, even though the Korean name is in Hangul.
-Do not include any additional fields.
 `;
 
     const completion = await openai.chat.completions.create({
@@ -78,7 +63,7 @@ Do not include any additional fields.
     const content = completion.choices[0].message?.content ?? "{}";
     const parsed = JSON.parse(content);
 
-    const result = {
+    return NextResponse.json({
       ...parsed,
       meta: {
         ageRange,
@@ -86,14 +71,12 @@ Do not include any additional fields.
         occupation,
         serviceSummary,
       },
-    };
-
-    return NextResponse.json(result);
+    });
   } catch (err) {
     console.error("Persona API Error:", err);
     return NextResponse.json(
       { error: "Failed to generate persona" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
