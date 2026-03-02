@@ -13,18 +13,12 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    "plugins": [{ "name": "next" }],
 
-    "baseUrl": ".",        // 👈 이 줄 추가
-
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
-    },
-
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    }
   },
   "include": [
     "next-env.d.ts",
