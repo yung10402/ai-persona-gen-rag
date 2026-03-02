@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import fs from "fs";
+import path from "path";
+import { parse } from "csv-parse/sync";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || "",
