@@ -9,12 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.9",
+    "chromadb": "^3.3.3",
     "csv-parse": "^6.1.0",
+    "dotenv": "^17.3.1",
     "iconv-lite": "^0.7.2",
     "next": "^16.1.6",
-    "openai": "^6.9.1",
+    "openai": "^6.27.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -24,6 +28,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

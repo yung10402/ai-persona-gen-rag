@@ -1,79 +1,84 @@
-﻿import fs from "fs";
-import path from "path";
-import { parse } from "csv-parse/sync";
+﻿// lib/rag/vectorRetriever.ts
+import { OpenAI } from "openai";
+import { ChromaClient } from "chromadb";
+import "dotenv/config";
 
-export type CardRow = {
+export type RetrievedSurveyCard = {
   id: string;
-  context: string;
-  robot_event: string;
-  human_state: string;
-  scenario: string;
-  ehmi_need: string;
-  emotion_reason: string;
+  Participant_id: string;
+  Place: string;
+  pedestrian_state: string;
+  Scenario_type: string;
+  robot_behavior: string;
+  robot_motion?: string;
+  user_behavior: string;
+  user_concern: string;
+  user_needs: string;
+  design_suggestion: string;
 };
 
-function buildSearchText(card: CardRow) {
+function buildQuery(params: {
+  location?: string;
+  pedestrian_state?: string;
+  scenario_type?: string;
+}) {
+  const location = params.location ?? "";
+  const state = params.pedestrian_state ?? "";
+  const scenario = params.scenario_type ?? "";
+
   return [
-    `Context: ${card.context}`,
-    `Robot event: ${card.robot_event}`,
-    `Human state: ${card.human_state}`,
-    `Scenario: ${card.scenario}`,
-    `Emotion reason: ${card.emotion_reason}`,
-    `Desired eHMI: ${card.ehmi_need}`,
+    `Location: ${location}`,
+    `Pedestrian state: ${state}`,
+    `Interaction scenario: ${scenario}`,
   ].join("\n");
 }
 
-function scoreCard(card: CardRow, query: string) {
-  const hay = buildSearchText(card).toLowerCase();
-  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  let score = 0;
-  for (const t of tokens) {
-    if (hay.includes(t)) score += 1;
-  }
-  return score;
-}
-
-/**
- * persona.csv에서 query 기준으로 top-k case를 리턴
- * - k는 1~8로 자동 클램프
- */
-export function retrieveFromPersonaCsv(params: {
-  context?: string;
-  robot_event?: string;
-  human_state?: string;
-  goal?: string;
+export async function retrieveFromSurveyVectorStore(params: {
+  location?: string;
+  pedestrian_state?: string;
+  scenario_type?: string;
   k?: number;
-}): { query: string; evidence: CardRow[] } {
-  const {
-    context = "",
-    robot_event = "",
-    human_state = "",
-    goal = "",
-    k = 5,
-  } = params;
+}): Promise<{ query: string; evidence: RetrievedSurveyCard[] }> {
+  const query = buildQuery(params);
+  const k = Math.max(1, Math.min(params.k ?? 5, 8));
 
-  const query =
-    `context: ${context}\nrobot_event: ${robot_event}\n` +
-    `human_state: ${human_state}\ngoal: ${goal}`.trim();
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
-  const filePath = path.join(process.cwd(), "data", "persona.csv");
-  const raw = fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "");
+  const chroma = new ChromaClient({
+    path: "http://localhost:8000",
+  });
 
-  const rows = parse(raw, {
-    columns: true,
-    skip_empty_lines: true,
-    relax_quotes: true,
-    trim: true,
-  }) as CardRow[];
+  const collection = await chroma.getCollection({
+    name: "survey_cards",
+  });
 
-  if (!rows.length) {
-    throw new Error("No rows found in data/persona.csv");
-  }
+  const queryEmbedding = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: query,
+  });
 
-  const ranked = rows
-    .map((c) => ({ c, s: scoreCard(c, query) }))
-    .sort((a, b) => b.s - a.s)
-    .slice(0, Math.max(1, Math.min(k, 8)));
+  const result = await collection.query({
+    queryEmbeddings: [queryEmbedding.data[0].embedding],
+    nResults: k,
+  });
 
-  return { query, evidence: ranked.map(({ c }) => c) };
+  const evidence: RetrievedSurveyCard[] = (result.metadatas?.[0] ?? []).map(
+    (m, idx) => ({
+      id: result.ids?.[0]?.[idx] ?? "",
+      Participant_id: String(m?.Participant_id ?? ""),
+      Place: String(m?.Place ?? ""),
+      pedestrian_state: String(m?.pedestrian_state ?? ""),
+      Scenario_type: String(m?.Scenario_type ?? ""),
+      robot_behavior: String(m?.robot_behavior ?? ""),
+      robot_motion: String(m?.robot_motion ?? ""),
+      user_behavior: String(m?.user_behavior ?? ""),
+      user_concern: String(m?.user_concern ?? ""),
+      user_needs: String(m?.user_needs ?? ""),
+      design_suggestion: String(m?.design_suggestion ?? ""),
+    })
+  );
+
+  return { query, evidence };
 }

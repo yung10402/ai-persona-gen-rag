@@ -4,42 +4,186 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { sendLog } from "@/lib/log";
 
-type EhmiApiResponse = {
-  message?: string;
-  rationale?: string;
-  citations?: Array<{
-    id?: string;
-    source_id?: string;
-    snippet?: string;
-    quote?: string;
-    score?: number;
-  }>;
-  debug?: any;
+type ScenarioEvidence = {
+  id: string;
+  Participant_id: string;
+  Place: string;
+  pedestrian_state: string;
+  Scenario_type: string;
+  robot_behavior: string;
+  robot_motion?: string;
+  user_behavior: string;
+  user_concern: string;
+  user_needs: string;
+  design_suggestion: string;
 };
 
-type EhmiResult = {
-  message: string;
-  rationale: string;
-  citations: Array<{ id: string; snippet: string }>;
-  debug?: any;
+type EvidenceSummary = {
+  observed_robot_behavior_summary: string;
+  pedestrian_response_summary: string;
+  concern_need_summary: string;
 };
 
-type RiskLevel = "low" | "mid" | "high";
-type Language = "ko" | "en";
+type ScenarioOption = {
+  option_id: string;
+  summary: string;
+  narrative_scenario: string;
+  participant_concerns: string[];
+  participant_needs: string[];
+  communication_strategy: string[];
+  evidence_summary: EvidenceSummary;
+  evidence: ScenarioEvidence;
+};
 
-function toNumber(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
+type ScenarioApiResponse = {
+  input?: {
+    location?: string;
+    pedestrian_state?: string;
+    scenario_type?: string;
+  };
+  query?: string;
+  options?: ScenarioOption[];
+  error?: string;
+};
 
-function toRiskLevel(value: string | null): RiskLevel {
-  if (value === "low" || value === "mid" || value === "high") return value;
-  return "high";
-}
+type ScenarioResult = {
+  input: {
+    location: string;
+    pedestrian_state: string;
+    scenario_type: string;
+  };
+  query: string;
+  options: ScenarioOption[];
+};
 
-function toLanguage(value: string | null): Language {
-  if (value === "en") return "en";
-  return "ko";
+function OptionCard({ option }: { option: ScenarioOption }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="persona-card" style={{ marginBottom: 24 }}>
+      <div className="persona-main">
+        <div className="persona-text">
+          <h3 className="persona-name">Option {option.option_id}</h3>
+
+          <h4 style={{ marginTop: 12 }}>Scenario Summary</h4>
+          <p className="persona-desc">{option.summary}</p>
+
+          {option.narrative_scenario && (
+            <>
+              <h4 style={{ marginTop: 12 }}>Narrative Scenario</h4>
+              <p className="persona-desc">{option.narrative_scenario}</p>
+            </>
+          )}
+
+          {option.participant_concerns?.length > 0 && (
+            <>
+              <h4 style={{ marginTop: 12 }}>Concerns</h4>
+              <ul className="output-list">
+                {option.participant_concerns.map((item, idx) => (
+                  <li key={`concern-${option.option_id}-${idx}`}>– {item}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {option.participant_needs?.length > 0 && (
+            <>
+              <h4 style={{ marginTop: 12 }}>Needs</h4>
+              <ul className="output-list">
+                {option.participant_needs.map((item, idx) => (
+                  <li key={`need-${option.option_id}-${idx}`}>– {item}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {option.communication_strategy?.length > 0 && (
+            <>
+              <h4 style={{ marginTop: 12 }}>Communication Strategy</h4>
+              <ul className="output-list">
+                {option.communication_strategy.map((item, idx) => (
+                  <li key={`strategy-${option.option_id}-${idx}`}>– {item}</li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <div style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              className="output-cta"
+              onClick={() => setOpen((prev) => !prev)}
+            >
+              {open ? "근거 닫기" : "근거 보기"}
+            </button>
+          </div>
+
+          {open && (
+            <div style={{ marginTop: 16 }}>
+              <h4>Evidence Summary</h4>
+
+              <h4 style={{ marginTop: 12 }}>Observed Robot Behavior</h4>
+              <p className="persona-desc">
+                {option.evidence_summary?.observed_robot_behavior_summary}
+              </p>
+
+              <h4 style={{ marginTop: 12 }}>Pedestrian Response</h4>
+              <p className="persona-desc">
+                {option.evidence_summary?.pedestrian_response_summary}
+              </p>
+
+              <h4 style={{ marginTop: 12 }}>Concern / Need</h4>
+              <p className="persona-desc">
+                {option.evidence_summary?.concern_need_summary}
+              </p>
+
+              <hr style={{ margin: "20px 0" }} />
+
+              <h4>Retrieved Participant Evidence</h4>
+
+              <ul className="output-list">
+                <li>
+                  <strong>Place:</strong> {option.evidence.Place}
+                </li>
+                <li>
+                  <strong>Pedestrian state:</strong>{" "}
+                  {option.evidence.pedestrian_state}
+                </li>
+                <li>
+                  <strong>Scenario type:</strong>{" "}
+                  {option.evidence.Scenario_type}
+                </li>
+              </ul>
+
+              <h4 style={{ marginTop: 12 }}>Robot Behavior</h4>
+              <p className="persona-desc">{option.evidence.robot_behavior}</p>
+
+              {option.evidence.robot_motion && (
+                <>
+                  <h4 style={{ marginTop: 12 }}>Robot Motion</h4>
+                  <p className="persona-desc">{option.evidence.robot_motion}</p>
+                </>
+              )}
+
+              <h4 style={{ marginTop: 12 }}>Pedestrian Response</h4>
+              <p className="persona-desc">{option.evidence.user_behavior}</p>
+
+              <h4 style={{ marginTop: 12 }}>Participant Concern</h4>
+              <p className="persona-desc">{option.evidence.user_concern}</p>
+
+              <h4 style={{ marginTop: 12 }}>Participant Need</h4>
+              <p className="persona-desc">{option.evidence.user_needs}</p>
+
+              <h4 style={{ marginTop: 12 }}>Design Suggestion</h4>
+              <p className="persona-desc">
+                {option.evidence.design_suggestion}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function OutputPageClient() {
@@ -48,133 +192,97 @@ export default function OutputPageClient() {
 
   const pid = searchParams.get("pid") ?? "";
 
-  // HomePageInner에서 넘어온 eHMI 쿼리
-  const mobilityType = searchParams.get("mobilityType") ?? "";
   const location = searchParams.get("location") ?? "";
-  const interaction = searchParams.get("interaction") ?? "";
-  const riskLevel = toRiskLevel(searchParams.get("riskLevel"));
-  const targetUserRaw = searchParams.get("targetUser") ?? "";
+  const pedestrian_state = searchParams.get("pedestrian_state") ?? "";
+  const scenario_type = searchParams.get("scenario_type") ?? "";
 
-  const distanceM = toNumber(searchParams.get("distanceM"), 1.5);
-  const speedMps = toNumber(searchParams.get("speedMps"), 1.2);
-
-  const maxChars = toNumber(searchParams.get("maxChars"), 30);
-  const tone = searchParams.get("tone") ?? "firm_polite";
-  const language = toLanguage(searchParams.get("language"));
-
-  // (옵션) 프로덕트 정보도 같이 넘어오면 로그에만 사용
   const serviceType = searchParams.get("serviceType") ?? "";
   const serviceCategory = searchParams.get("serviceCategory") ?? "";
   const serviceSummary = searchParams.get("serviceSummary") ?? "";
 
-  const [ehmiData, setEhmiData] = useState<EhmiResult | null>(null);
+  const [scenarioData, setScenarioData] = useState<ScenarioResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasAnyInput = !!(mobilityType || location || interaction || targetUserRaw);
+  const hasAnyInput = !!(location || pedestrian_state || scenario_type);
 
-  // query → API body
-  const ehmiRequestBody = useMemo(() => {
-    const targetUser = targetUserRaw
-      ? targetUserRaw
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
+  const requestBody = useMemo(() => {
     return {
-      mobilityType: mobilityType || "shared_scooter",
-      location: location || "sidewalk",
-      interaction: interaction || "yield",
-      riskLevel,
-      targetUser,
-      distanceM,
-      speedMps,
-      constraints: {
-        maxChars,
-        tone,
-        language,
-      },
+      location,
+      pedestrian_state,
+      scenario_type,
     };
-  }, [
-    mobilityType,
-    location,
-    interaction,
-    riskLevel,
-    targetUserRaw,
-    distanceM,
-    speedMps,
-    maxChars,
-    tone,
-    language,
-  ]);
+  }, [location, pedestrian_state, scenario_type]);
 
   useEffect(() => {
     if (!hasAnyInput) return;
 
-    const fetchEhmi = async () => {
+    const fetchScenarioOptions = async () => {
       try {
         setLoading(true);
         setError(null);
-        setEhmiData(null);
+        setScenarioData(null);
 
         const res = await fetch("/api/generateEhmi", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(ehmiRequestBody),
+          body: JSON.stringify(requestBody),
         });
 
         if (!res.ok) {
           const msg = await res.text();
-          console.error("generateEhmi error:", msg);
-          setError("eHMI 메시지 생성에 실패했습니다.");
+          console.error("generate scenario error:", msg);
+          setError("디자인 옵션 생성에 실패했습니다.");
           return;
         }
 
-        const raw = (await res.json()) as EhmiApiResponse;
+        const raw = (await res.json()) as ScenarioApiResponse;
 
-        const result: EhmiResult = {
-          message: String(raw?.message ?? ""),
-          rationale: String(raw?.rationale ?? ""),
-          citations: Array.isArray(raw?.citations)
-            ? raw.citations.map((c, idx) => ({
-                id: String(c?.id ?? c?.source_id ?? `C${idx + 1}`),
-                snippet: String(c?.snippet ?? c?.quote ?? ""),
-              }))
-            : [],
-          debug: raw?.debug,
+        if (raw.error) {
+          setError(raw.error);
+          return;
+        }
+
+        const result: ScenarioResult = {
+          input: {
+            location: String(raw.input?.location ?? ""),
+            pedestrian_state: String(raw.input?.pedestrian_state ?? ""),
+            scenario_type: String(raw.input?.scenario_type ?? ""),
+          },
+          query: String(raw.query ?? ""),
+          options: Array.isArray(raw.options) ? raw.options : [],
         };
 
-        setEhmiData(result);
+        setScenarioData(result);
 
         void sendLog({
           pid: pid || undefined,
           page: "output",
-          event: "ehmi_generated",
+          event: "scenario_options_generated",
           payload: {
             serviceType,
             serviceCategory,
             serviceSummary,
-            ehmiRequestBody,
-            ehmi: result,
+            requestBody,
+            result,
           },
         });
       } catch (e) {
         console.error(e);
-        setError("eHMI 생성 중 오류가 발생했습니다.");
+        setError("디자인 옵션 생성 중 오류가 발생했습니다.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchEhmi();
+    fetchScenarioOptions();
   }, [
     hasAnyInput,
     pid,
     serviceType,
     serviceCategory,
     serviceSummary,
-    ehmiRequestBody,
+    requestBody,
   ]);
 
   return (
@@ -185,6 +293,7 @@ export default function OutputPageClient() {
             <div className="ellipse" />
             <div className="ellipse-2" />
           </div>
+
           <h1 className="text-wrapper-2">AI Persona Gen</h1>
 
           <nav
@@ -203,7 +312,11 @@ export default function OutputPageClient() {
             onClick={() => router.push("/dashboard")}
           >
             <div className="material-symbols">
-              <img className="img" src="/img/Dashboard.svg" alt="대시보드 아이콘" />
+              <img
+                className="img"
+                src="/img/Dashboard.svg"
+                alt="대시보드 아이콘"
+              />
             </div>
           </nav>
         </div>
@@ -211,75 +324,64 @@ export default function OutputPageClient() {
 
       <main className="output-main">
         <h2 className="output-title">
-          <span className="output-title-blue">eHMI</span> 결과
+          <span className="output-title-blue">Design Options</span> 결과
         </h2>
 
         {!hasAnyInput && (
-          <p>
-            입력값이 없습니다. 홈에서 eHMI 상황을 입력한 뒤 생성해주세요.
-          </p>
+          <p>입력값이 없습니다. 홈에서 interaction context를 입력해주세요.</p>
         )}
 
-        {!ehmiData && hasAnyInput && (
+        {!scenarioData && hasAnyInput && (
           <>
-            {loading && <p>AI가 eHMI 메시지를 생성하는 중입니다...</p>}
+            {loading && <p>AI가 디자인 옵션을 생성하는 중입니다...</p>}
             {error && <p style={{ color: "red" }}>{error}</p>}
           </>
         )}
 
-        {ehmiData && (
-          <section className="persona-card">
-            <div className="persona-main">
-              <div className="persona-text">
-                <h3 className="persona-name">eHMI 메시지</h3>
-                <p className="persona-desc">{ehmiData.message}</p>
+        {scenarioData && (
+          <>
+            <section className="persona-card" style={{ marginBottom: 24 }}>
+              <div className="persona-main">
+                <div className="persona-text">
+                  <h3 className="persona-name">Interaction Context</h3>
+                  <ul className="output-list">
+                    <li>– location: {scenarioData.input.location}</li>
+                    <li>
+                      – pedestrian_state: {scenarioData.input.pedestrian_state}
+                    </li>
+                    <li>
+                      – scenario_type: {scenarioData.input.scenario_type}
+                    </li>
+                  </ul>
 
-                {ehmiData.rationale && (
-                  <>
-                    <h4 style={{ marginTop: 12 }}>근거</h4>
-                    <p className="persona-desc">{ehmiData.rationale}</p>
-                  </>
-                )}
-
-                {ehmiData.citations.length > 0 && (
-                  <>
-                    <h4 style={{ marginTop: 12 }}>인용</h4>
-                    <ul className="output-list">
-                      {ehmiData.citations.map((c) => (
-                        <li key={c.id}>
-                          – [{c.id}] {c.snippet}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                <h4 style={{ marginTop: 12 }}>입력</h4>
-                <ul className="output-list">
-                  <li>– mobilityType: {ehmiRequestBody.mobilityType}</li>
-                  <li>– location: {ehmiRequestBody.location}</li>
-                  <li>– interaction: {ehmiRequestBody.interaction}</li>
-                  <li>– riskLevel: {ehmiRequestBody.riskLevel}</li>
-                  <li>– targetUser: {ehmiRequestBody.targetUser.join(", ") || "(없음)"}</li>
-                  <li>– distance: {ehmiRequestBody.distanceM} m</li>
-                  <li>– speed: {ehmiRequestBody.speedMps} m/s</li>
-                  <li>– maxChars: {ehmiRequestBody.constraints.maxChars}</li>
-                  <li>– tone: {ehmiRequestBody.constraints.tone}</li>
-                  <li>– language: {ehmiRequestBody.constraints.language}</li>
-                </ul>
-
-                <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    className="output-cta"
-                    onClick={() => router.push(pid ? `/?pid=${pid}` : "/")}
-                  >
-                    입력 다시 하기
-                  </button>
+                  {scenarioData.query && (
+                    <>
+                      <h4 style={{ marginTop: 12 }}>Query</h4>
+                      <p className="persona-desc">{scenarioData.query}</p>
+                    </>
+                  )}
                 </div>
               </div>
+            </section>
+
+            {scenarioData.options.length > 0 ? (
+              scenarioData.options.map((option) => (
+                <OptionCard key={option.option_id} option={option} />
+              ))
+            ) : (
+              <p>생성된 옵션이 없습니다.</p>
+            )}
+
+            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="output-cta"
+                onClick={() => router.push(pid ? `/?pid=${pid}` : "/")}
+              >
+                입력 다시 하기
+              </button>
             </div>
-          </section>
+          </>
         )}
       </main>
     </div>
