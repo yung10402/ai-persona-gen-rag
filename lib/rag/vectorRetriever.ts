@@ -1,12 +1,5 @@
-﻿import "dotenv/config";
+﻿import "server-only";
 import { OpenAI } from "openai";
-import { CloudClient } from "chromadb";
-
-const chroma = new CloudClient({
-  apiKey: process.env.CHROMA_API_KEY,
-  tenant: process.env.CHROMA_TENANT,
-  database: process.env.CHROMA_DATABASE,
-});
 
 export type RetrievedSurveyCard = {
   id: string;
@@ -22,6 +15,10 @@ export type RetrievedSurveyCard = {
   design_suggestion: string;
   distance?: number;
 };
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 function buildQuery(params: {
   location?: string;
@@ -58,15 +55,17 @@ function rerankEvidence(
     if (normalize(item.Scenario_type) === targetScenario) bonus += 3;
 
     if (
-      normalize(item.Place).includes(targetPlace) ||
-      targetPlace.includes(normalize(item.Place))
+      targetPlace &&
+      (normalize(item.Place).includes(targetPlace) ||
+        targetPlace.includes(normalize(item.Place)))
     ) {
       bonus += 2;
     }
 
     if (
-      normalize(item.pedestrian_state).includes(targetState) ||
-      targetState.includes(normalize(item.pedestrian_state))
+      targetState &&
+      (normalize(item.pedestrian_state).includes(targetState) ||
+        targetState.includes(normalize(item.pedestrian_state)))
     ) {
       bonus += 1;
     }
@@ -107,6 +106,30 @@ function rerankEvidence(
   return selected;
 }
 
+async function getSurveyCollection() {
+  if (!process.env.CHROMA_API_KEY) {
+    throw new Error("Missing CHROMA_API_KEY");
+  }
+  if (!process.env.CHROMA_TENANT) {
+    throw new Error("Missing CHROMA_TENANT");
+  }
+  if (!process.env.CHROMA_DATABASE) {
+    throw new Error("Missing CHROMA_DATABASE");
+  }
+
+  const { CloudClient } = await import("chromadb");
+
+  const chroma = new CloudClient({
+    apiKey: process.env.CHROMA_API_KEY,
+    tenant: process.env.CHROMA_TENANT,
+    database: process.env.CHROMA_DATABASE,
+  });
+
+  return chroma.getCollection({
+    name: "survey_cards",
+  });
+}
+
 export async function retrieveFromSurveyVectorStore(params: {
   location?: string;
   pedestrian_state?: string;
@@ -117,13 +140,7 @@ export async function retrieveFromSurveyVectorStore(params: {
   const rawK = Math.max(finalK, 6);
   const query = buildQuery(params);
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
-  const collection = await chroma.getCollection({
-    name: "survey_cards",
-  });
+  const collection = await getSurveyCollection();
 
   const queryEmbedding = await openai.embeddings.create({
     model: "text-embedding-3-small",
