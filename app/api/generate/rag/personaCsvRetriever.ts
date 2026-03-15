@@ -1,7 +1,6 @@
-﻿// lib/rag/vectorRetriever.ts
+﻿import "dotenv/config";
 import { OpenAI } from "openai";
-import { ChromaClient } from "chromadb";
-import "dotenv/config";
+import { CloudClient } from "chromadb";
 
 export type RetrievedSurveyCard = {
   id: string;
@@ -46,8 +45,10 @@ export async function retrieveFromSurveyVectorStore(params: {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const chroma = new ChromaClient({
-    path: "http://localhost:8000",
+  const chroma = new CloudClient({
+    apiKey: process.env.CHROMA_API_KEY,
+    tenant: process.env.CHROMA_TENANT,
+    database: process.env.CHROMA_DATABASE,
   });
 
   const collection = await chroma.getCollection({
@@ -62,6 +63,7 @@ export async function retrieveFromSurveyVectorStore(params: {
   const result = await collection.query({
     queryEmbeddings: [queryEmbedding.data[0].embedding],
     nResults: k,
+    include: ["metadatas", "documents", "distances"],
   });
 
   const evidence: RetrievedSurveyCard[] = (result.metadatas?.[0] ?? []).map(

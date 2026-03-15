@@ -1,8 +1,16 @@
-﻿import path from "path";
+﻿import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
+import path from "path";
 import * as XLSX from "xlsx";
 import { OpenAI } from "openai";
-import { ChromaClient } from "chromadb";
-import "dotenv/config";
+import { CloudClient } from "chromadb";
+
+const chroma = new CloudClient({
+  apiKey: process.env.CHROMA_API_KEY,
+  tenant: process.env.CHROMA_TENANT,
+  database: process.env.CHROMA_DATABASE,
+});
 
 type SurveyRow = {
   Participant_id: string;
@@ -29,12 +37,6 @@ async function main() {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const chroma = new ChromaClient({
-    host: "localhost",
-    port: 8000,
-    ssl: false,
-  });
-
   const collectionName = "survey_cards";
 
   try {
@@ -57,6 +59,9 @@ async function main() {
   console.log("HEADERS:", Object.keys(rows[0] ?? {}));
   console.log("FIRST ROW:", rows[0]);
   console.log(`Loaded rows from Excel: ${rows.length}`);
+  console.log("CHROMA_API_KEY exists:", !!process.env.CHROMA_API_KEY);
+  console.log("CHROMA_TENANT:", process.env.CHROMA_TENANT);
+  console.log("CHROMA_DATABASE:", process.env.CHROMA_DATABASE);
 
   const ids: string[] = [];
   const documents: string[] = [];

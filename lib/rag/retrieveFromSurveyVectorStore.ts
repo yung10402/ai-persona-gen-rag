@@ -2,12 +2,6 @@
 import { OpenAI } from "openai";
 import { CloudClient } from "chromadb";
 
-const chroma = new CloudClient({
-  apiKey: process.env.CHROMA_API_KEY,
-  tenant: process.env.CHROMA_TENANT,
-  database: process.env.CHROMA_DATABASE,
-});
-
 export type RetrievedSurveyCard = {
   id: string;
   Participant_id: string;
@@ -55,18 +49,22 @@ function rerankEvidence(
   const scored = evidence.map((item) => {
     let bonus = 0;
 
-    if (normalize(item.Scenario_type) === targetScenario) bonus += 3;
+    if (targetScenario && normalize(item.Scenario_type) === targetScenario) {
+      bonus += 3;
+    }
 
     if (
-      normalize(item.Place).includes(targetPlace) ||
-      targetPlace.includes(normalize(item.Place))
+      targetPlace &&
+      (normalize(item.Place).includes(targetPlace) ||
+        targetPlace.includes(normalize(item.Place)))
     ) {
       bonus += 2;
     }
 
     if (
-      normalize(item.pedestrian_state).includes(targetState) ||
-      targetState.includes(normalize(item.pedestrian_state))
+      targetState &&
+      (normalize(item.pedestrian_state).includes(targetState) ||
+        targetState.includes(normalize(item.pedestrian_state)))
     ) {
       bonus += 1;
     }
@@ -79,10 +77,12 @@ function rerankEvidence(
     };
   });
 
+  const sorted = scored.sort((a, b) => b.score - a.score);
+
   const selected: RetrievedSurveyCard[] = [];
   const seenBehaviors = new Set<string>();
 
-  for (const candidate of scored.sort((a, b) => b.score - a.score)) {
+  for (const candidate of sorted) {
     const behaviorKey = normalize(candidate.item.robot_behavior);
 
     if (seenBehaviors.has(behaviorKey) && selected.length < finalK) {
@@ -96,7 +96,7 @@ function rerankEvidence(
   }
 
   if (selected.length < finalK) {
-    for (const candidate of scored.sort((a, b) => b.score - a.score)) {
+    for (const candidate of sorted) {
       if (!selected.find((s) => s.id === candidate.item.id)) {
         selected.push(candidate.item);
       }
@@ -113,12 +113,31 @@ export async function retrieveFromSurveyVectorStore(params: {
   scenario_type?: string;
   k?: number;
 }): Promise<{ query: string; evidence: RetrievedSurveyCard[] }> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY in .env");
+  }
+  if (!process.env.CHROMA_API_KEY) {
+    throw new Error("Missing CHROMA_API_KEY in .env");
+  }
+  if (!process.env.CHROMA_TENANT) {
+    throw new Error("Missing CHROMA_TENANT in .env");
+  }
+  if (!process.env.CHROMA_DATABASE) {
+    throw new Error("Missing CHROMA_DATABASE in .env");
+  }
+
   const finalK = Math.max(1, Math.min(params.k ?? 3, 8));
   const rawK = Math.max(finalK, 6);
   const query = buildQuery(params);
 
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+  });
+
+  const chroma = new CloudClient({
+    apiKey: process.env.CHROMA_API_KEY,
+    tenant: process.env.CHROMA_TENANT,
+    database: process.env.CHROMA_DATABASE,
   });
 
   const collection = await chroma.getCollection({

@@ -1,5 +1,5 @@
-﻿import { OpenAI } from "openai";
-import "dotenv/config";
+﻿import "dotenv/config";
+import { OpenAI } from "openai";
 import { retrieveFromSurveyVectorStore } from "./vectorRetriever";
 
 export type GenerateScenarioParams = {
@@ -97,10 +97,7 @@ function optionHasTooMuchEnglish(option: Partial<ScenarioOption>) {
   return texts.some(looksMostlyEnglish);
 }
 
-async function regenerateInKorean(
-  openai: OpenAI,
-  rawJsonText: string
-) {
+async function regenerateInKorean(openai: OpenAI, rawJsonText: string) {
   const response = await openai.chat.completions.create({
     model: "gpt-4.1-mini",
     temperature: 0.2,
@@ -226,8 +223,8 @@ ${evidenceBlock}
     ],
   });
 
-  let content = response.choices[0]?.message?.content?.trim() ?? "";
-  let parsed = safeJsonParse(content);
+  const content = response.choices[0]?.message?.content?.trim() ?? "";
+  const parsed = safeJsonParse(content);
 
   if (!parsed) {
     throw new Error(`Failed to parse JSON for option ${optionId}`);
@@ -255,7 +252,6 @@ ${evidenceBlock}
     },
   };
 
-  // 영어가 많이 섞이면 한국어로 한 번 더 정제
   if (optionHasTooMuchEnglish(draftOption)) {
     const regenerated = await regenerateInKorean(openai, content);
     const reparsed = safeJsonParse(regenerated);
@@ -314,6 +310,10 @@ ${evidenceBlock}
 export async function generateScenarioFromRAG(
   params: GenerateScenarioParams
 ): Promise<GeneratedScenarioResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY");
+  }
+
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
